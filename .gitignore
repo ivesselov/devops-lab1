@@ -1,0 +1,14 @@
+.vagrant/
+id_rsa*
+id_ed25519*
+*.key
+*.pem
+*.crt
+*.csr
+secrets.yml
+*.secret.yaml
+.vault_pass*
+*.retry
+kubeconfig*
+*.kubeconfig
+keys/

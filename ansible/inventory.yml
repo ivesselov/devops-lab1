@@ -1,0 +1,14 @@
+etcd:
+  hosts:
+    etcd01:
+      ansible_host: 192.168.56.10
+pgsql:
+  hosts:
+    pgsql01:
+      ansible_host: 192.168.56.11
+    pgsql02:
+      ansible_host: 192.168.56.12
+k3s:
+  hosts:
+    k3s01:
+      ansible_host: 192.168.56.20
