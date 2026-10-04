@@ -1,0 +1,34 @@
+---
+- name: Configure PostgreSQL users and databases
+  hosts: pgsql
+  become: true
+  vars_files:
+    - secrets.yml
+  vars:
+    psql: /usr/pgsql-17/bin/psql
+
+  tasks:
+    - name: Check if this node is Primary
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:8008/primary"
+        status_code: [200, 503]
+      register: patroni_role
+
+    - name: Run SQL on Primary only
+      when: patroni_role.status == 200
+      block:
+        - name: Copy SQL scripts
+          ansible.builtin.copy:
+            src: sqls/test-user.sql
+            dest: /tmp/test-user.sql
+            owner: postgres
+            mode: "0600"
+
+        - name: Create test_user and test_db1
+          ansible.builtin.command: >
+            {{ psql }} -v ON_ERROR_STOP=1
+            -v test_user_password={{ pg_test_user_password }}
+            -f /tmp/test-user.sql
+          become_user: postgres
+          no_log: true
+          changed_when: false
