@@ -1,0 +1,46 @@
+---
+- name: Install and configure HAProxy
+  hosts: etcd
+  become: true
+
+  tasks:
+    - name: Install HAProxy
+      ansible.builtin.dnf:
+        name: haproxy
+        state: present
+
+    - name: Check SELinux boolean haproxy_connect_any
+      ansible.builtin.command: getsebool haproxy_connect_any
+      register: haproxy_sebool
+      changed_when: false
+
+    - name: Enable SELinux boolean haproxy_connect_any
+      ansible.builtin.command: setsebool -P haproxy_connect_any 1
+      when: "'off' in haproxy_sebool.stdout"
+
+    - name: Deploy HAProxy config
+      ansible.builtin.template:
+        src: templates/haproxy.cfg.j2
+        dest: /etc/haproxy/haproxy.cfg
+        owner: root
+        group: root
+        mode: "0644"
+        validate: haproxy -c -f %s
+      notify: Reload haproxy
+
+    - name: Enable and start HAProxy
+      ansible.builtin.systemd_service:
+        name: haproxy
+        enabled: true
+        state: started
+
+    - name: Wait for HAProxy to listen on 5432
+      ansible.builtin.wait_for:
+        port: 5432
+        timeout: 15
+
+  handlers:
+    - name: Reload haproxy
+      ansible.builtin.systemd_service:
+        name: haproxy
+        state: reloaded
