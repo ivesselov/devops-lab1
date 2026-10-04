@@ -1,0 +1,88 @@
+---
+- name: Install k3s and ingress-nginx
+  hosts: k3s
+  become: true
+
+  vars:
+    kubectl: /usr/local/bin/kubectl
+    ingress_nginx_version: "1.15.1"
+    cert_dir: /etc/lab-certs
+    tls_secret_name: wildcard-lab-local-tls
+    manifests_dir: /home/ansible/lab/k8s
+
+  tasks:
+    - name: Install extra netfilter kernel modules (xt_multiport for k3s)
+      ansible.builtin.dnf:
+        name: "kernel-uek-modules-extra-netfilter-{{ ansible_kernel }}"
+        state: present
+
+    - name: Load xt_multiport now and on boot
+      ansible.builtin.shell: |
+        modprobe xt_multiport
+        echo xt_multiport > /etc/modules-load.d/k3s.conf
+      args:
+        creates: /etc/modules-load.d/k3s.conf
+
+    - name: Install k3s
+      ansible.builtin.shell: curl -sfL https://get.k3s.io | sh -
+      environment:
+        INSTALL_K3S_EXEC: >-
+          --disable traefik
+          --node-ip {{ ansible_host }}
+          --flannel-iface eth1
+          --write-kubeconfig-mode 644
+      args:
+        creates: /usr/local/bin/k3s
+
+    - name: Wait for node to be Ready
+      ansible.builtin.command: "{{ kubectl }} wait --for=condition=Ready node/{{ inventory_hostname }} --timeout=180s"
+      changed_when: false
+
+    - name: Install ingress-nginx
+      ansible.builtin.command: >
+        {{ kubectl }} apply -f
+        https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v{{ ingress_nginx_version }}/deploy/static/provider/cloud/deploy.yaml
+      register: ingress_apply
+      changed_when: "'created' in ingress_apply.stdout or 'configured' in ingress_apply.stdout"
+
+    - name: Wait for ingress-nginx controller
+      ansible.builtin.command: "{{ kubectl }} -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=300s"
+      changed_when: false
+
+    - name: Create namespace monitoring
+      ansible.builtin.command: "{{ kubectl }} apply -f {{ manifests_dir }}/namespace.yaml"
+      register: ns_apply
+      changed_when: "'created' in ns_apply.stdout or 'configured' in ns_apply.stdout"
+
+    - name: Create certificate directory
+      ansible.builtin.file:
+        path: "{{ cert_dir }}"
+        state: directory
+        mode: "0700"
+
+    - name: Generate self-signed wildcard certificate
+      ansible.builtin.command: >
+        openssl req -x509 -newkey rsa:2048 -nodes -days 365
+        -keyout {{ cert_dir }}/lab.local.key
+        -out {{ cert_dir }}/lab.local.crt
+        -subj "/CN=*.lab.local"
+        -addext "subjectAltName=DNS:*.lab.local,DNS:lab.local"
+      args:
+        creates: "{{ cert_dir }}/lab.local.crt"
+
+    - name: Create TLS secret in namespace monitoring
+      ansible.builtin.shell: >
+        {{ kubectl }} -n monitoring create secret tls {{ tls_secret_name }}
+        --cert={{ cert_dir }}/lab.local.crt --key={{ cert_dir }}/lab.local.key
+        --dry-run=client -o yaml | {{ kubectl }} apply -f -
+      register: secret_apply
+      changed_when: "'created' in secret_apply.stdout or 'configured' in secret_apply.stdout"
+
+    - name: Get ingress-nginx service
+      ansible.builtin.command: "{{ kubectl }} -n ingress-nginx get svc ingress-nginx-controller"
+      register: ingress_svc
+      changed_when: false
+
+    - name: Show ingress-nginx service
+      ansible.builtin.debug:
+        var: ingress_svc.stdout_lines

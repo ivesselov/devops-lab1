@@ -1,0 +1,43 @@
+---
+- name: Deploy monitoring stack to k3s
+  hosts: k3s
+  become: true
+  vars_files:
+    - secrets.yml
+  vars:
+    kubectl: /usr/local/bin/kubectl
+    manifests_dir: /home/ansible/lab/k8s
+
+  tasks:
+    - name: Create Grafana admin secret
+      ansible.builtin.shell: >
+        {{ kubectl }} -n monitoring create secret generic grafana-admin
+        --from-literal=admin-user=admin
+        --from-literal=admin-password={{ grafana_admin_password }}
+        --dry-run=client -o yaml | {{ kubectl }} apply -f -
+      no_log: true
+      changed_when: false
+
+    - name: Apply monitoring manifests
+      ansible.builtin.command: "{{ kubectl }} apply -f {{ manifests_dir }}/{{ item }}"
+      loop:
+        - prometheus.yaml
+        - grafana.yaml
+      register: manifests_apply
+      changed_when: "'created' in manifests_apply.stdout or 'configured' in manifests_apply.stdout"
+
+    - name: Wait for deployments
+      ansible.builtin.command: "{{ kubectl }} -n monitoring rollout status deployment/{{ item }} --timeout=300s"
+      loop:
+        - prometheus
+        - grafana
+      changed_when: false
+
+    - name: Get monitoring resources
+      ansible.builtin.command: "{{ kubectl }} -n monitoring get pods,pvc,ingress"
+      register: monitoring_state
+      changed_when: false
+
+    - name: Show monitoring resources
+      ansible.builtin.debug:
+        var: monitoring_state.stdout_lines

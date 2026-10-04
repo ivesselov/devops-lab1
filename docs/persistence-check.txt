@@ -1,0 +1,21 @@
+oneoffworkbox@lab-host:~/lab$q='https://prometheus.lab.local/api/v1/query?query=prometheus_tsdb_lowest_timestamp_seconds''
+oneoffworkbox@lab-host:~/lab$ curl -sk "$q" | grep -o '"value":\[[^]]*\]'
+"value":[1791128418.903,"1791128231"]
+oneoffworkbox@lab-host:~/lab$ vagrant ssh k3s01 -c "kubectl -n monitoring delete pod -l app=prometheus && kubectl -n monitoring rollout status deploy/prometheus"
+pod "prometheus-b7fd9bbcf-q79kl" deleted from monitoring namespace
+Waiting for deployment "prometheus" rollout to finish: 0 of 1 updated replicas are available...
+deployment "prometheus" successfully rolled out
+oneoffworkbox@lab-host:~/lab$ curl -sk "$q" | grep -o '"value":\[[^]]*\]'
+"value":[1791128475.970,"1791128231"]
+
+
+
+oneoffworkbox@lab-host:~/lab$ curl -sk -u "$G" -H 'Content-Type: application/json' -X POST \
+  https://grafana.lab.local/api/folders -d '{"title":"persistence-test"}'
+{"id":1,"uid":"fg0849dn32tc0c","orgId":1,"title":"persistence-test","url":"/dashboards/f/fg0849dn32tc0c/persistence-test","hasAcl":false,"canSave":true,"canEdit":true,"canAdmin":true,"canDelete":true,"createdBy":"admin","created":"2026-10-04T15:41:44Z","updatedBy":"admin","updated":"2026-10-04T15:41:44Z","version":1}
+oneoffworkbox@lab-host:~/lab$ vagrant ssh k3s01 -c "kubectl -n monitoring delete pod -l app=grafana && kubectl -n monitoring rollout status deploy/grafana"
+pod "grafana-59569f4fd6-2crq8" deleted from monitoring namespace
+Waiting for deployment "grafana" rollout to finish: 0 of 1 updated replicas are available...
+deployment "grafana" successfully rolled out
+oneoffworkbox@lab-host:~/lab$ curl -sk -u "$G" https://grafana.lab.local/api/folders
+[{"id":1,"uid":"fg0849dn32tc0c","title":"persistence-test"}]
