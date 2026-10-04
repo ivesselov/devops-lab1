@@ -34,6 +34,10 @@ Vagrant.configure("2") do |config|
       node.vm.provision "file", source: "#{ANSIBLE_KEY}.pub", destination: "/tmp/ansible.pub"
       node.vm.provision "shell", inline: <<-SHELL
         set -e
+        CON=$(nmcli -g GENERAL.CONNECTION device show eth1)
+        nmcli connection modify "$CON" 802-3-ethernet.mtu 1460
+        nmcli connection up "$CON"
+        sed -i '/^127\\.0\\.1\\.1/d' /etc/hosts
         grep -q "#{n[:ip]} #{name}" /etc/hosts || cat >> /etc/hosts <<EOF
 #{HOSTS}
 EOF

@@ -1,0 +1,115 @@
+---
+- name: Install PostgreSQL 17 and Patroni
+  hosts: pgsql
+  become: true
+  serial: 1
+  vars_files:
+    - secrets.yml
+
+  vars:
+    pg_version: 17
+    pg_data_dir: "/var/lib/pgsql/{{ pg_version }}/data"
+    pg_bin_dir: "/usr/pgsql-{{ pg_version }}/bin"
+    patroni_venv: /opt/patroni
+    patroni_conf_dir: /etc/patroni
+
+  tasks:
+    - name: Install PGDG repository
+      ansible.builtin.dnf:
+        name: https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+        state: present
+        disable_gpg_check: true
+        disablerepo: "pgdg*"
+
+    - name: Fix PGDG repo path for Oracle Linux (empty $releasever_minor)
+      ansible.builtin.replace:
+        path: /etc/yum.repos.d/pgdg-redhat-all.repo
+        regexp: 'rhel-\$releasever_major\.\$releasever_minor'
+        replace: 'rhel-{{ ansible_distribution_version }}'
+
+    - name: Disable built-in PostgreSQL module
+      ansible.builtin.command: dnf -qy module disable postgresql
+      changed_when: false
+    - name: Install PostgreSQL packages
+      ansible.builtin.dnf:
+        name:
+          - "postgresql{{ pg_version }}-server"
+          - "postgresql{{ pg_version }}-contrib"
+          - python3-pip
+        state: present
+
+    - name: Install Patroni into virtualenv
+      ansible.builtin.pip:
+        name:
+          - "patroni[etcd3]"
+          - psycopg2-binary
+        virtualenv: "{{ patroni_venv }}"
+        virtualenv_command: python3 -m venv
+
+    - name: Link patronictl to PATH
+      ansible.builtin.file:
+        src: "{{ patroni_venv }}/bin/patronictl"
+        dest: /usr/local/bin/patronictl
+        state: link
+
+    - name: Create Patroni config directory
+      ansible.builtin.file:
+        path: "{{ patroni_conf_dir }}"
+        state: directory
+        owner: postgres
+        group: postgres
+        mode: "0750"
+
+    - name: Deploy Patroni config
+      ansible.builtin.template:
+        src: templates/patroni.yml.j2
+        dest: "{{ patroni_conf_dir }}/patroni.yml"
+        owner: postgres
+        group: postgres
+        mode: "0600"
+      notify: Restart patroni
+
+    - name: Deploy Patroni systemd unit
+      ansible.builtin.template:
+        src: templates/patroni.service.j2
+        dest: /etc/systemd/system/patroni.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart patroni
+
+    - name: Enable and start Patroni
+      ansible.builtin.systemd_service:
+        name: patroni
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: Wait for Patroni to be healthy
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:8008/health"
+        status_code: 200
+      register: patroni_health
+      until: patroni_health.status == 200
+      retries: 30
+      delay: 5
+
+  handlers:
+    - name: Restart patroni
+      ansible.builtin.systemd_service:
+        name: patroni
+        state: restarted
+        daemon_reload: true
+
+- name: Show Patroni cluster status
+  hosts: pgsql01
+  become: true
+  tasks:
+    - name: Get cluster status
+      ansible.builtin.command: /usr/local/bin/patronictl -c /etc/patroni/patroni.yml list
+      register: cluster_status
+      changed_when: false
+
+    - name: Show cluster status
+      ansible.builtin.debug:
+        var: cluster_status.stdout_lines
