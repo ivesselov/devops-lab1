@@ -1,0 +1,12 @@
+name: {{ etcd_name }}
+data-dir: {{ etcd_data_dir }}
+
+listen-client-urls: http://{{ etcd_ip }}:{{ etcd_client_port }},http://127.0.0.1:{{ etcd_client_port }}
+advertise-client-urls: http://{{ etcd_ip }}:{{ etcd_client_port }}
+
+listen-peer-urls: http://{{ etcd_ip }}:{{ etcd_peer_port }}
+initial-advertise-peer-urls: http://{{ etcd_ip }}:{{ etcd_peer_port }}
+
+initial-cluster: {{ etcd_name }}=http://{{ etcd_ip }}:{{ etcd_peer_port }}
+initial-cluster-state: new
+initial-cluster-token: patroni-etcd

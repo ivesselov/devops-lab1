@@ -1,0 +1,114 @@
+---
+- name: Install and configure etcd
+  hosts: etcd
+  become: true
+
+  vars:
+    etcd_version: "3.6.15"
+    etcd_name: "{{ inventory_hostname }}"
+    etcd_ip: "{{ ansible_host }}"
+    etcd_user: etcd
+    etcd_data_dir: /var/lib/etcd
+    etcd_conf_dir: /etc/etcd
+    etcd_client_port: 2379
+    etcd_peer_port: 2380
+
+  tasks:
+    - name: Create etcd user
+      ansible.builtin.user:
+        name: "{{ etcd_user }}"
+        system: true
+        create_home: false
+        shell: /sbin/nologin
+
+    - name: Create etcd data directory
+      ansible.builtin.file:
+        path: "{{ etcd_data_dir }}"
+        state: directory
+        owner: "{{ etcd_user }}"
+        group: "{{ etcd_user }}"
+        mode: "0700"
+
+    - name: Create etcd config directory
+      ansible.builtin.file:
+        path: "{{ etcd_conf_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install tar
+      ansible.builtin.dnf:
+        name: tar
+        state: present
+
+    - name: Download etcd archive
+      ansible.builtin.get_url:
+        url: "https://github.com/etcd-io/etcd/releases/download/v{{ etcd_version }}/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
+        dest: "/tmp/etcd-v{{ etcd_version }}.tar.gz"
+        mode: "0644"
+
+    - name: Extract etcd archive
+      ansible.builtin.unarchive:
+        src: "/tmp/etcd-v{{ etcd_version }}.tar.gz"
+        dest: /tmp
+        remote_src: true
+        creates: "/tmp/etcd-v{{ etcd_version }}-linux-amd64/etcd"
+
+    - name: Install etcd binaries
+      ansible.builtin.copy:
+        src: "/tmp/etcd-v{{ etcd_version }}-linux-amd64/{{ item }}"
+        dest: "/usr/local/bin/{{ item }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - etcd
+        - etcdctl
+        - etcdutl
+
+    - name: Deploy etcd config
+      ansible.builtin.template:
+        src: templates/etcd.conf.yml.j2
+        dest: "{{ etcd_conf_dir }}/etcd.conf.yml"
+        owner: root
+        group: "{{ etcd_user }}"
+        mode: "0640"
+      notify: Restart etcd
+
+    - name: Deploy etcd systemd unit
+      ansible.builtin.template:
+        src: templates/etcd.service.j2
+        dest: /etc/systemd/system/etcd.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart etcd
+
+    - name: Enable and start etcd
+      ansible.builtin.systemd_service:
+        name: etcd
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    # --- 7. Проверка ---
+    - name: Check etcd health
+      ansible.builtin.command: >
+        /usr/local/bin/etcdctl
+        --endpoints=http://{{ etcd_ip }}:{{ etcd_client_port }}
+        endpoint health
+      register: etcd_health
+      changed_when: false
+
+    - name: Show etcd health
+      ansible.builtin.debug:
+        var: etcd_health.stdout
+
+  handlers:
+    - name: Restart etcd
+      ansible.builtin.systemd_service:
+        name: etcd
+        state: restarted
+        daemon_reload: true

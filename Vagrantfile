@@ -47,6 +47,8 @@ EOF
 
       if name == "k3s01"
         node.vm.provision "file", source: ANSIBLE_KEY, destination: "/tmp/ansible_key"
+        node.vm.synced_folder "ansible/", "/home/ansible/ansible", type: "rsync",
+          owner: "ansible", group: "ansible"
         node.vm.provision "shell", inline: <<-SHELL
           set -e
           dnf install -y ansible-core
