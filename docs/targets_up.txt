@@ -1,0 +1,6 @@
+node	pgsql02	up
+node	k3s01	up
+node	etcd01	up
+node	pgsql01	up
+postgres	pgcluster	up
+prometheus	localhost:9090	up

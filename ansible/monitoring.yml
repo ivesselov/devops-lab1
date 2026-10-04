@@ -18,19 +18,46 @@
       no_log: true
       changed_when: false
 
+    - name: Create postgres_exporter credentials secret
+      ansible.builtin.shell: >
+        {{ kubectl }} -n monitoring create secret generic postgres-exporter-credentials
+        --from-literal=username=svc_monitoring
+        --from-literal=password={{ pg_monitoring_password }}
+        --dry-run=client -o yaml | {{ kubectl }} apply -f -
+      no_log: true
+      changed_when: false
+
+    - name: Create Grafana dashboards ConfigMap
+      ansible.builtin.shell: >
+        {{ kubectl }} -n monitoring create configmap grafana-dashboards
+        --from-file={{ manifests_dir }}/dashboards/
+        --dry-run=client -o yaml | {{ kubectl }} apply --server-side --force-conflicts -f -
+      register: dashboards_apply
+      changed_when: "'serverside-applied' in dashboards_apply.stdout and 'unchanged' not in dashboards_apply.stdout"
+
     - name: Apply monitoring manifests
       ansible.builtin.command: "{{ kubectl }} apply -f {{ manifests_dir }}/{{ item }}"
       loop:
         - prometheus.yaml
         - grafana.yaml
+        - postgres-exporter.yaml
       register: manifests_apply
       changed_when: "'created' in manifests_apply.stdout or 'configured' in manifests_apply.stdout"
+
+    - name: Restart Prometheus if its config changed
+      ansible.builtin.command: "{{ kubectl }} -n monitoring rollout restart deployment/prometheus"
+      when: manifests_apply.results | selectattr('stdout', 'search', 'configmap/prometheus-config configured') | list | length > 0
+
+    - name: Restart Grafana if datasources changed
+      ansible.builtin.command: "{{ kubectl }} -n monitoring rollout restart deployment/grafana"
+      when: manifests_apply.results | selectattr('stdout', 'search', 'configmap/grafana-datasources configured') | list | length > 0
 
     - name: Wait for deployments
       ansible.builtin.command: "{{ kubectl }} -n monitoring rollout status deployment/{{ item }} --timeout=300s"
       loop:
         - prometheus
         - grafana
+        - postgres-exporter
       changed_when: false
 
     - name: Get monitoring resources
