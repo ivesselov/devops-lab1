@@ -28,6 +28,8 @@
 | 3.2 Prometheus, Grafana | Deployment + PVC (`local-path`) + Ingress с TLS, `strategy: Recreate` | `k8s/prometheus.yaml`, `k8s/grafana.yaml`, `ansible/monitoring.yml` |
 | 3.3 Сбор метрик | node_exporter на всех ВМ (systemd); postgres_exporter в k3s через HAProxy под svc_monitoring; учётные данные только в Secrets; дашборды 1860 и 9628 через provisioning | `ansible/node_exporter.yml`, `k8s/postgres-exporter.yaml`, `k8s/dashboards/` |
 
+При выполнении использовался ИИ-ассистент для подготовки конфигураций
+и диагностики
 
 ## 0. Хост
 
