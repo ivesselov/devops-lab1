@@ -19,10 +19,13 @@
       block:
         - name: Copy SQL scripts
           ansible.builtin.copy:
-            src: sqls/test-user.sql
-            dest: /tmp/test-user.sql
+            src: "sqls/{{ item }}"
+            dest: "/tmp/{{ item }}"
             owner: postgres
             mode: "0600"
+          loop:
+            - test-user.sql
+            - pgstat.sql
 
         - name: Create test_user and test_db1
           ansible.builtin.command: >
@@ -32,3 +35,25 @@
           become_user: postgres
           no_log: true
           changed_when: false
+
+        - name: Create pg_stat_statements extension
+          ansible.builtin.command: >
+            {{ psql }} -v ON_ERROR_STOP=1 -d {{ item }}
+            -f /tmp/pgstat.sql
+          become_user: postgres
+          loop:
+            - postgres
+            - test_db1
+          changed_when: false
+
+        - name: Check pg_stat_statements settings
+          ansible.builtin.command: >
+            {{ psql }} -Atc "select name || ' = ' || setting from pg_settings
+            where name in ('shared_preload_libraries', 'pg_stat_statements.track')"
+          become_user: postgres
+          register: pgss_settings
+          changed_when: false
+
+        - name: Show pg_stat_statements settings
+          ansible.builtin.debug:
+            var: pgss_settings.stdout_lines
