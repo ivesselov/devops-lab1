@@ -26,6 +26,7 @@
           loop:
             - test-user.sql
             - pgstat.sql
+            - svcmon.sql
 
         - name: Create test_user and test_db1
           ansible.builtin.command: >
@@ -57,3 +58,12 @@
         - name: Show pg_stat_statements settings
           ansible.builtin.debug:
             var: pgss_settings.stdout_lines
+
+        - name: Create svc_monitoring role
+          ansible.builtin.command: >
+            {{ psql }} -v ON_ERROR_STOP=1
+            -v monitoring_password={{ pg_monitoring_password }}
+            -f /tmp/svcmon.sql
+          become_user: postgres
+          no_log: true
+          changed_when: false

@@ -1,0 +1,4 @@
+postgres_primary,FRONTEND,OPEN
+postgres_primary,pgsql01,DOWN
+postgres_primary,pgsql02,UP
+postgres_primary,BACKEND,UP
