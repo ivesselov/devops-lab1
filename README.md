@@ -11,6 +11,24 @@
 
 Все ВМ — Oracle Linux 9, на каждой работает node_exporter (порт 9100).
 
+## Реализация по пунктам задания
+
+| Пункт | Реализация | Файлы |
+|---|---|---|
+| 1.1–1.2 ВМ и порты | 4 ВМ Oracle Linux 9 (libvirt/KVM), сеть 192.168.56.0/24, проброс портов на localhost хоста | `Vagrantfile` |
+| 1.3 Ansible | пользователь `ansible` с ключом и sudo создаётся провиженингом Vagrant, Ansible на k3s01 | `Vagrantfile`, `ansible/ansible.cfg`, `ansible/inventory.yml` |
+| 2.1 etcd | etcd 3.6 из бинарника, systemd, один узел | `ansible/etcd.yml`, `ansible/templates/` |
+| 2.2 PostgreSQL + Patroni | PostgreSQL 17 (PGDG), Patroni 4 в venv; pgsql01 инициализирует кластер, pgsql02 — streaming-реплика | `ansible/patroni.yml`, `ansible/templates/` |
+| 2.3 HAProxy | проверка `/primary` API Patroni, `on-marked-down shutdown-sessions` | `ansible/haproxy.yml`, `ansible/templates/` |
+| 2.4 Пользователь и БД | идемпотентный SQL, выполняется только на Primary | `ansible/db.yml`, `ansible/sqls/test-user.sql` |
+| 2.5 pg_stat_statements | `shared_preload_libraries` и `track = all` в конфиге Patroni, расширение в `postgres` и `test_db1` | `ansible/sqls/pgstat.sql` |
+| 2.6 svc_monitoring | роль `pg_monitor`, без SUPERUSER, лимит подключений | `ansible/sqls/svcmon.sql` |
+| 2.7 Failover | см. раздел «Проверка отказоустойчивости» | `docs/failover/` |
+| 3.1 k3s | k3s (stable) без Traefik, ingress-nginx, самоподписанный `*.lab.local` в TLS Secret, namespace `monitoring` | `ansible/k3s.yml`, `k8s/namespace.yaml` |
+| 3.2 Prometheus, Grafana | Deployment + PVC (`local-path`) + Ingress с TLS, `strategy: Recreate` | `k8s/prometheus.yaml`, `k8s/grafana.yaml`, `ansible/monitoring.yml` |
+| 3.3 Сбор метрик | node_exporter на всех ВМ (systemd); postgres_exporter в k3s через HAProxy под svc_monitoring; учётные данные только в Secrets; дашборды 1860 и 9628 через provisioning | `ansible/node_exporter.yml`, `k8s/postgres-exporter.yaml`, `k8s/dashboards/` |
+
+
 ## 0. Хост
 
 Хост Vagrant — Linux с поддержкой KVM: 
